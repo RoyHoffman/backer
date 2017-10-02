@@ -1,0 +1,4 @@
+﻿  client test.cpp
+c:\users\roey hofman\source\repos\backer client  test\backer test client\client test.cpp(175): warning C4101: 'i': unreferenced local variable
+  backer test client.vcxproj -> C:\Users\Roey Hofman\source\repos\backer client  test\Debug\backer test client.exe
+  backer test client.vcxproj -> C:\Users\Roey Hofman\source\repos\backer client  test\Debug\backer test client.pdb (Partial PDB)
