@@ -16,7 +16,6 @@
 
 #include <experimental/filesystem>
 
-
 using namespace std;
 using namespace std::experimental::filesystem;
 
@@ -26,9 +25,9 @@ int dirtyConnect();
 void send(int,const string&);
 
 void socketError(string);
-void sendfile(int,string);
 
-void recvfile(int);
+void sendfile(int,string);
+void recivefile(int,string);
 
 string nameProtocol(int);
 int sizeProtocol(int);
@@ -42,6 +41,7 @@ string fileNameFromPath(const string&);
 string fileNameFromPath(const path&);
 
 void sendDirectory(int,string);
+void reciveDirectory(int,string);
 
 int main()
 {
@@ -53,9 +53,9 @@ int main()
     if(send(socket, "outTest",7,0)==-1)
         socketError("send()");
     cout << "sent" << endl;
-    //*
-    recvfile(socket);
-    recvfile(socket);
+    /*
+    recivefile(socket,"/home/roy/Documents");
+    recivefile(socket"/home/roy/Documents");
     //*/
     /*
     sendfile(socket,"/home/roy/log/connection log");
@@ -63,28 +63,47 @@ int main()
     sendfile(socket,"/home/roy/Pictures/PNG_transparency_demonstration_1.png");
     //*/
     //sendDirectory(socket,"/home/roy/Desktop/test send");
+    reciveDirectory(socket,"/home/roy/Documents");
     
     
     
     return 0;
 }
 
-void recvfile(int socket)
+void recivefile(int socket,string path)
 {
-    string name = nameProtocol(socket);
+    path += "/" + nameProtocol(socket);
     int size = sizeProtocol(socket);
     
-    cout << size << "\n" <<name <<endl;
+    cout << size << "\n" << path <<endl;
     
     string fileData = recvUntil(socket,size);
     
-    int file = creat(name.c_str(),S_IRWXU);
+    int file = creat(path.c_str(),S_IRWXU);
     
     write(file,fileData.c_str(),size);
     
     close(file);
     
 }
+
+void reciveDirectory(int socket, string path)
+{
+	path += "/" + nameProtocol(socket);
+	mkdir(path.c_str(), 0777);
+	string nextRecv;
+	while (true)
+	{
+		nextRecv = recvUntil(socket, 1);
+		if (nextRecv == "d") //directory
+			reciveDirectory(socket, path);
+		if (nextRecv == "r") //regular file
+			recivefile(socket,path);
+		if (nextRecv == "f")
+			return;
+	}
+}
+
 
 void sendDirectory(int socket,string path)
 {
