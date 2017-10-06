@@ -1,4 +1,4 @@
-#define WIN32_LEAN_AND_MEAN
+﻿#define WIN32_LEAN_AND_MEAN
 //#define _WINSOCK_DEPRECATED_NO_WARNINGS
 
 
@@ -8,6 +8,7 @@
 #include <windows.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <shlobj.h>
 
 #include <Mswsock.h>
 
@@ -46,24 +47,32 @@ string recvUntil(int, char);
 string recvUntil(int, int);
 void intostr(string&, char *, int);
 
-void sendfile(int, string);
-void recivefile(int,string);
+void sendfile(int, wstring,bool toCheckPath = true);
+void recivefile(int, wstring);
 
-void reciveDirectory(int, string);
-void sendDirectory(int, string);
+void reciveDirectory(int, wstring);
+void sendDirectory(int, wstring,bool toCheckPath = true);
 
-string fileNameFromPath(const string&);
+wstring fileNameFromPath(const wstring&);
 
+string utf8_encode(const wstring &);
+wstring utf8_decode(const string &str);
 
-
+string localFolder();
 
 
 void hold();
 void hold(string);
 
+bool receiverCheckingPath(int);
+bool commandSuccessful(int);
+
+
+
 
 int main(int argc, char **argv)
 {
+	string path = localFolder();
 
 	int socket;
 	socket = dirtyConnect();
@@ -75,7 +84,7 @@ int main(int argc, char **argv)
 	if (recv(socket, recvBuf, recvBufLen, NULL) == SOCKET_ERROR)
 		socketError("recv()");
 	cout << recvBuf << "\n-------" << endl;
-	//*
+	/*
 	sendfile(socket, "C:\\Users\\Roey Hofman\\Pictures\\Camera Roll\\wow.PNG");
 	sendfile(socket, "C:\\Users\\Roey Hofman\\Documents\\strategy homework conclusions.txt");
 	//*/
@@ -86,19 +95,26 @@ int main(int argc, char **argv)
 	recivefile(socket, "C:\\Users\\Roey Hofman\\Desktop\\here");
 	//*/
 
-	//reciveDirectory(socket, "C:\\Users\\Roey Hofman\\Desktop\\here");
+	//reciveDirectory(socket, L"C:\\Users\\Roey Hofman\\Desktop\\here");
+
+	sendDirectory(socket, L"C:\\Users\\Roey Hofman\\Pictures");
 	
 	hold();
 	
 }
 
-void sendfile(int socket, string path)
+void sendfile(int socket, wstring path, bool toCheckPath)
 {
 
-	string name = fileNameFromPath(path);
+	string name = utf8_encode(fileNameFromPath(path));
+
 
 	HANDLE hFile;
-	hFile = CreateFile(path.c_str(),               // file to open
+
+	//std::wstring stemp = std::wstring(path.begin(), path.end());
+	//LPCWSTR sw = stemp.c_str();
+
+	hFile = CreateFileW(path.c_str(),               // file to open
 		GENERIC_READ,          // open for reading
 		FILE_SHARE_READ,       // share for reading
 		NULL,                  // default security
@@ -111,11 +127,15 @@ void sendfile(int socket, string path)
 	GetFileSizeEx(hFile, &lisize);
 	LONGLONG filesize = lisize.QuadPart;
 
-	string format = to_string(name.length()) + 'a' + name + to_string(filesize)+ 'a';
+	string format = to_string(name.length()) + "a" + name + to_string(filesize)+ "a";
 
 	cout << format << endl;
 
 	send(socket, format);
+
+	if (toCheckPath)
+		if (receiverCheckingPath(socket))
+			return;
 
 	//_TRANSMIT_FILE_BUFFERS head(); at a later time you can be cool and use this shit to transfer the protocol
 
@@ -238,12 +258,12 @@ void hold(string message)
 }
 
 
-void recivefile(int socket,string path)
+void recivefile(int socket,wstring path)
 {
 
-	string name = nameProtocol(socket);
+	wstring name = utf8_decode(nameProtocol(socket));
 	int size = sizeProtocol(socket);
-	path += "\\" + name;
+	path += L"\\" + name;
 
 	//u_long size;
 	//ioctlsocket(socket, FIONREAD, &size);
@@ -258,7 +278,7 @@ void recivefile(int socket,string path)
 
 	HANDLE hFile;
 
-	hFile = CreateFile(path.c_str(),                // name of the write
+	hFile = CreateFileW(path.c_str(),                // name of the write
 		GENERIC_WRITE,          // open for writing
 		0,                      // do not share
 		NULL,                   // default security
@@ -288,12 +308,16 @@ void recivefile(int socket,string path)
 	CloseHandle(hFile);
 }
 
-void sendDirectory(int socket, string path)
+void sendDirectory(int socket, wstring path, bool toCheckPath)
 {
-	string name = fileNameFromPath(path);
-	string format = to_string(name.length()) + 'a' + name;
+	string name = utf8_encode(fileNameFromPath(path));
+	string format = to_string(name.length()) + "a" + name;
 	cout << format << endl;
 	send(socket, format);
+
+	if (toCheckPath)
+		if (receiverCheckingPath(socket))
+			return;
 
 	for (auto & de : directory_iterator(path))
 	{
@@ -303,22 +327,22 @@ void sendDirectory(int socket, string path)
 		{
 			send(socket, "d"); //directory
 			cout << 'd' << endl;
-			sendDirectory(socket, de.path().string());
+			sendDirectory(socket, de.path().wstring(),false);
 		}
 		else
 		{
 			send(socket, "r"); //regular file
 			cout << 'r' << endl;
-			sendfile(socket, de.path().string());
+			sendfile(socket, de.path().wstring(),false);
 		}
 	}
 	send(socket, "f"); //finsih
 }
 
-void reciveDirectory(int socket, string path)
+void reciveDirectory(int socket, wstring path)
 {
-	path += "\\" + nameProtocol(socket);
-	CreateDirectory(path.c_str(), NULL);
+	path += L"\\" + utf8_decode(nameProtocol(socket));
+	CreateDirectoryW(path.c_str(), NULL);
 	string nextRecv;
 	while (true)
 	{
@@ -327,7 +351,7 @@ void reciveDirectory(int socket, string path)
 			reciveDirectory(socket, path);
 		if (nextRecv == "r") //regular file
 			recivefile(socket,path);
-		if (nextRecv == "f")
+		if (nextRecv == "f") //finish
 			return;
 	}
 }
@@ -397,14 +421,13 @@ void send(int socket, const string& m)
 	cout << "sent" << endl;
 }
 
-
 void intostr(string & out, char * in, int len)
 {
 	for (int i = 0; i < len; i++)
 		out += in[i];
 }
 
-string fileNameFromPath(const string& path)
+wstring fileNameFromPath(const wstring& path)
 {
 	int counter = 0;
 	int len = 0;
@@ -415,4 +438,70 @@ string fileNameFromPath(const string& path)
 			len = counter;
 	}
 	return path.substr(len);
+}
+
+// Convert a wide Unicode string to an UTF8 string
+string utf8_encode(const std::wstring &wstr)
+{
+	if (wstr.empty()) return std::string();
+	int size_needed = WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)wstr.size(), NULL, 0, NULL, NULL);
+	std::string strTo(size_needed, 0);
+	WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)wstr.size(), &strTo[0], size_needed, NULL, NULL);
+	return strTo;
+}
+
+// Convert an UTF8 string to a wide Unicode String
+wstring utf8_decode(const std::string &str)
+{
+	if (str.empty()) return std::wstring();
+	int size_needed = MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), NULL, 0);
+	std::wstring wstrTo(size_needed, 0);
+	MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), &wstrTo[0], size_needed);
+	return wstrTo;
+}
+
+string localFolder()
+{
+	CHAR my_documents[MAX_PATH];
+	SHGetFolderPath(NULL, CSIDL_PERSONAL, NULL, SHGFP_TYPE_CURRENT, my_documents);
+
+	string pth = my_documents;
+	pth += "\\backer files";
+
+	if (!exists(path(pth)))
+		CreateDirectory(pth.c_str(), NULL);
+	return pth;
+}
+
+bool commandSuccessful(int socket)
+{
+	string answer = recvUntil(socket, 1);
+	if (answer == "s")
+		return true;
+	if (answer == "e")
+		cout << recvUntil(socket, '*') << endl;
+	return false;
+}
+
+bool receiverCheckingPath(int socket)
+{
+	if (commandSuccessful(socket))
+		return false;
+	string command;
+	while (true)
+	{
+		cin >> command;
+		if (command == "1" || command == "2")
+		{
+			send(socket, command);
+			return false;
+		}
+			
+		if (command == "3")
+		{
+			send(socket, command);
+			return true;
+		}
+		cout << "invalid command, please retry" << endl;
+	}
 }
