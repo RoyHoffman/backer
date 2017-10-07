@@ -23,11 +23,15 @@ using namespace std::experimental::filesystem;
 int dirtyConnect();
 
 void send(int,const string&);
+void sendS(int);
 
 void socketError(string);
 
 void sendfile(int,string);
-void recivefile(int,string);
+void recivefile(int,string,bool toCheckPath = true);
+
+void sendDirectory(int,string);
+void reciveDirectory(int,string,bool toCheckPath = true);
 
 string nameProtocol(int);
 int sizeProtocol(int);
@@ -39,9 +43,14 @@ void intostr(string&, char[], int);
 
 string fileNameFromPath(const string&);
 string fileNameFromPath(const path&);
+string goBackDirectory(const string&);
 
-void sendDirectory(int,string);
-void reciveDirectory(int,string);
+
+
+void commandGet(int);
+void commandBackup(int);
+
+bool checkPath(int,string&);
 
 int main()
 {
@@ -70,10 +79,14 @@ int main()
     return 0;
 }
 
-void recivefile(int socket,string path)
+void recivefile(int socket,string path,bool toCheckPath)
 {
     path += "/" + nameProtocol(socket);
     int size = sizeProtocol(socket);
+    
+    if(toCheckPath)
+        if(checkPath(socket,path))
+            return;
     
     cout << size << "\n" << path <<endl;
     
@@ -87,18 +100,21 @@ void recivefile(int socket,string path)
     
 }
 
-void reciveDirectory(int socket, string path)
+void reciveDirectory(int socket, string path,bool toCheckPath)
 {
 	path += "/" + nameProtocol(socket);
+        if(toCheckPath)
+            if(checkPath(socket,path))
+                return;
 	mkdir(path.c_str(), 0777);
 	string nextRecv;
 	while (true)
 	{
 		nextRecv = recvUntil(socket, 1);
 		if (nextRecv == "d") //directory
-			reciveDirectory(socket, path);
+			reciveDirectory(socket, path,false);
 		if (nextRecv == "r") //regular file
-			recivefile(socket,path);
+			recivefile(socket,path,false);
 		if (nextRecv == "f")
 			return;
 	}
@@ -335,9 +351,65 @@ string fileNameFromPath(const path& path)
     return fileNameFromPath(s);
 }
 
+string goBackDirectory(const string& path)
+{
+    int counter = 0;
+    int len = 0;
+    for(char c: path)
+    {
+        counter++;
+        if (c == '/')
+            len = counter;
+    }
+    return path.substr(0,len-1);
+}
+
 void send(int socket,const string& m)
 {
     if(send(socket, m.c_str(),strlen(m.c_str()),0)==-1)
         socketError("send()");
     cout << "sent" << endl;
+}
+
+void sendS(int socket)
+{
+    send(socket,"s");
+}
+
+bool checkPath(int socket,string& path)
+{
+    if(exists(path)){
+        string name = fileNameFromPath(path);
+        int fileEd;
+        bool edExists;
+        string ed;
+        for(fileEd=2;true;fileEd++)
+        {
+            ed = to_string(fileEd);
+            edExists = false;
+            for (auto & de : directory_iterator(goBackDirectory(path)))
+                if(equal(ed.rbegin(), ed.rend(), de.path().string().rbegin()))
+                    edExists = true;
+            if(!edExists)
+                goto endloop;
+        }
+        endloop:
+        send(socket,"e"+name+" already exists, would you like to:\n(1)overwrite the old file\n(2)save your file as "+name+to_string(fileEd)+"\n(3)cancel the backup\nplease enter 1/2/3*");
+        string command = recvUntil(socket,1);
+        if(command == "1")
+        {
+            remove(path.c_str());
+            return false;
+        }
+        if(command == "2")
+        {
+            path += to_string(fileEd);
+            return false;
+        }
+        if(command == "3")
+            return true;
+        return true;
+    }
+    sendS(socket);
+    return false;
 }
