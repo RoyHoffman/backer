@@ -27,14 +27,17 @@ void sendS(int);
 
 void socketError(string);
 
-void sendfile(int,string);
+void sendfile(int,string,bool toCheckPath = true);
 void recivefile(int,string,bool toCheckPath = true);
 
-void sendDirectory(int,string);
+void sendDirectory(int,string,bool toCheckPath = true);
 void reciveDirectory(int,string,bool toCheckPath = true);
 
-string nameProtocol(int);
-int sizeProtocol(int);
+string reciveNameProtocol(int);
+int recivesizeProtocol(int);
+
+void sendNameProtocol(int,const string&);
+void sendSizeProtocol(int,const string&);
 
 string recvUntil(int, char);
 string recvUntil(int, int);
@@ -51,6 +54,8 @@ void commandGet(int);
 void commandBackup(int);
 
 bool checkPath(int,string&);
+
+bool clientContinue(int);
 
 int main()
 {
@@ -71,8 +76,8 @@ int main()
     sendfile(socket,"/home/roy/Pictures/testdownload.jpg");
     sendfile(socket,"/home/roy/Pictures/PNG_transparency_demonstration_1.png");
     //*/
-    //sendDirectory(socket,"/home/roy/Desktop/test send");
-    reciveDirectory(socket,"/home/roy/Documents");
+    sendDirectory(socket,"/home/roy/Desktop/test send");
+    //reciveDirectory(socket,"/home/roy/Documents");
     
     
     
@@ -81,8 +86,8 @@ int main()
 
 void recivefile(int socket,string path,bool toCheckPath)
 {
-    path += "/" + nameProtocol(socket);
-    int size = sizeProtocol(socket);
+    path += "/" + recvNameProtocol(socket);
+    int size = recvSizeProtocol(socket);
     
     if(toCheckPath)
         if(checkPath(socket,path))
@@ -102,7 +107,7 @@ void recivefile(int socket,string path,bool toCheckPath)
 
 void reciveDirectory(int socket, string path,bool toCheckPath)
 {
-	path += "/" + nameProtocol(socket);
+	path += "/" + recvNameProtocol(socket);
         if(toCheckPath)
             if(checkPath(socket,path))
                 return;
@@ -121,14 +126,16 @@ void reciveDirectory(int socket, string path,bool toCheckPath)
 }
 
 
-void sendDirectory(int socket,string path)
+void sendDirectory(int socket,string path,bool toCheckPath)
 {
     string name = fileNameFromPath(path);
-    string format = to_string(name.length())+'a'+name;
     
-    cout << format << endl;
+    sendNameProtocol(socket,name);
     
-    send(socket,format);
+    
+    if(toCheckPath)
+            if(!clientContinue(socket))
+                return;
     
     for (auto & de : directory_iterator(path))
     {
@@ -140,19 +147,19 @@ void sendDirectory(int socket,string path)
         {
             send(socket,"d"); //directory
             cout << 'd' << endl;
-            sendDirectory(socket,de.path().string());
+            sendDirectory(socket,de.path().string(),false);
         }
         else
         {
             send(socket,"r"); //regular file
             cout << 'r' << endl;
-            sendfile(socket,de.path().string());
+            sendfile(socket,de.path().string(),false);
         }
     }
     send(socket,"f"); //finsih
 }
 
-void sendfile(int socket,string path)
+void sendfile(int socket,string path,bool toCheckPath)
 {
     string name = fileNameFromPath(path);
     
@@ -165,15 +172,21 @@ void sendfile(int socket,string path)
     fstat(file,&filestat);
     size_t size = filestat.st_size;  //size of file
     
-    string format = to_string(name.length())+'a'+name+to_string(size)+'a';
+    sendNameProtocol(socket,name);
+    sendSizeProtocol(socket,size);
+    
+    //string format = to_string(name.length())+'a'+name+to_string(size)+'a';
+    
     
     cout << format << endl;
     
     send(socket,format);
     
+    if(toCheckPath)
+            if(!clientContinue(socket))
+                return;
     
-    
-    sleep(1);
+    //sleep(1);
     /*
     char recvbuf[90];
     read(file,recvbuf,90);
@@ -273,17 +286,31 @@ void socketError(string name)
     exit(-1);
 }
 
-int sizeProtocol(int socket)
+int recvSizeProtocol(int socket)
 {
 	string slen = recvUntil(socket, 'a');
 	return stoi(slen);
 }
 
-string nameProtocol(int socket)
+string recvNameProtocol(int socket)
 {
-	int len = sizeProtocol(socket);
+	int len = recvSizeProtocol(socket);
 	return recvUntil(socket, len);
 }
+
+void sendSizeProtocol(int socket,const string& m)
+{
+    send(socket,to_string(m.length())+'*');
+}
+
+void sendNameProtocol(int socket,const string& m)
+{
+    sendSizeProtocol(int,m);
+    send(int,m);
+}
+
+string format = to_string(name.length())+'a'+name;
+
 
 
 string recvUntil(int socket, char stop)
@@ -374,6 +401,15 @@ void send(int socket,const string& m)
 void sendS(int socket)
 {
     send(socket,"s");
+}
+
+bool clientContinue(int socket)
+{
+	string answer = recvUntil(socket, 1);
+	if (answer == "s")
+		return true;
+	if (answer == "e")
+            return false;
 }
 
 bool checkPath(int socket,string& path)
